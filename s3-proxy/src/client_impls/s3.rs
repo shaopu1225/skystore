@@ -10,6 +10,12 @@ pub struct S3ObjectStoreClient {
     s3_proxy: Proxy,
 }
 
+// impl From<aws_sdk_s3::client::Client> for Proxy {
+//     fn from(value: aws_sdk_s3::client::Client) -> Self {
+//         Self(value)
+//     }
+// }
+
 impl S3ObjectStoreClient {
     #[allow(dead_code)]
     pub async fn new(endpoint_url: String) -> Self {
@@ -33,7 +39,7 @@ impl S3ObjectStoreClient {
             .force_path_style(true)
             .build();
         let sdk_client = aws_sdk_s3::client::Client::from_conf(s3_config);
-        let s3_proxy = Proxy::from(sdk_client);
+        let s3_proxy = Proxy(sdk_client);
         Self { s3_proxy }
     }
 }

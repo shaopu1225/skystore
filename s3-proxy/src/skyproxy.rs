@@ -1,7 +1,6 @@
 use crate::objstore_client::ObjectStoreClient;
 use crate::utils::stream_utils::split_streaming_blob;
 use crate::utils::type_utils::*;
-
 use s3s::dto::*;
 use s3s::stream::ByteStream;
 use s3s::{S3Request, S3Response, S3Result, S3};
@@ -15,6 +14,14 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::SystemTime;
 use tracing::error;
+
+use rand_core::OsRng;
+use k256::ecdsa::{SigningKey, Signature, signature::Signer, VerifyingKey, signature::Verifier};
+use ctr::cipher::StreamCipher;
+use ctr::Ctr64LE;
+use aes::Aes128;
+
+
 
 pub struct SkyProxy {
     pub store_clients: HashMap<String, Arc<Box<dyn ObjectStoreClient>>>,
@@ -304,7 +311,7 @@ impl S3 for SkyProxy {
 
             tasks.spawn(async move {
                 let create_bucket_req = new_create_bucket_request(bucket_name.clone(), None);
-                client
+                    client
                     .create_bucket(S3Request::new(create_bucket_req))
                     .await
                     .unwrap();
@@ -774,6 +781,19 @@ impl S3 for SkyProxy {
         &self,
         req: S3Request<PutObjectInput>,
     ) -> S3Result<S3Response<PutObjectOutput>> {
+
+        type Aes128Ctr64LE = ctr::Ctr64LE<aes::Aes128>;
+        let mut buf = [0u8; 16];
+        let mut iv: Vec<i64> = Vec::with_capacity(16);
+        for _ in 0..iv.capacity() {
+            iv.push(rand::random());
+        };
+        let password = req.password;
+        
+        // pbkdf2_hmac::<Sha256>(password, iv, 600_000, &mut buf);
+        // ey = buf;
+        // laintext = req.input.body.unwrap();
+
         // Idempotent PUT
         let locator = self
             .locate_object(req.input.bucket.clone(), req.input.key.clone())
@@ -1684,3 +1704,4 @@ impl S3 for SkyProxy {
         }))
     }
 }
+

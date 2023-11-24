@@ -284,7 +284,7 @@ impl ObjectStoreClient for AzureObjectStoreClient {
         let blob_client = self.blob_client(&container_name, &blob_name);
         let input_stream = SeekableBlobWrapper::new(req.body.unwrap());
         let resp = blob_client.put_block_blob(input_stream).await;
-
+        
         match resp {
             Ok(resp) => Ok(S3Response::new(PutObjectOutput {
                 e_tag: Some(resp.etag),

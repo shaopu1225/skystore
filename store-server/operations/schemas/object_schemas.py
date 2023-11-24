@@ -106,6 +106,8 @@ class LocateObjectResponse(BaseModel):
     last_modified: Optional[datetime] = None
     etag: Optional[str] = None
     multipart_upload_id: Optional[str] = None
+    iv: Optional[List[int]] = None
+    encrypted: bool = False
 
 
 class DBLogicalMultipartUploadPart(Base):
