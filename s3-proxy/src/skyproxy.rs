@@ -1,9 +1,12 @@
 use crate::objstore_client::ObjectStoreClient;
 use crate::utils::stream_utils::split_streaming_blob;
+use crate::utils::stream_utils::convert_u8_to_bytes;
 use crate::utils::type_utils::*;
+use futures::TryStreamExt;
 use s3s::dto::*;
 use s3s::stream::ByteStream;
 use s3s::{S3Request, S3Response, S3Result, S3};
+use bytes::Bytes;
 
 use chrono::Utc;
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
@@ -14,15 +17,23 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::SystemTime;
 use tracing::error;
-
 use rand_core::OsRng;
 use k256::ecdsa::{SigningKey, Signature, signature::Signer, VerifyingKey, signature::Verifier};
 use ctr::cipher::StreamCipher;
 use ctr::Ctr64LE;
 use aes::Aes128;
+use pbkdf2::{pbkdf2_hmac, pbkdf2_hmac_array};
+use sha2::Sha256;
+use ctr::cipher::KeyIvInit;
+type Aes128Ctr64LE = ctr::Ctr64LE<aes::Aes128>;
 
-
-
+let signing_key = SigningKey::random(&mut OsRng); 
+pub struct EncMacText{
+   
+    pub encMess: Vec<u8>,
+    pub signature: Signature,
+    
+}
 pub struct SkyProxy {
     pub store_clients: HashMap<String, Arc<Box<dyn ObjectStoreClient>>>,
     pub dir_conf: Configuration,
@@ -42,6 +53,7 @@ impl SkyProxy {
     ) -> Self {
         let mut store_clients = HashMap::new();
 
+        
         if local {
             // Local test configuration
             for r in regions {
@@ -782,17 +794,6 @@ impl S3 for SkyProxy {
         req: S3Request<PutObjectInput>,
     ) -> S3Result<S3Response<PutObjectOutput>> {
 
-        type Aes128Ctr64LE = ctr::Ctr64LE<aes::Aes128>;
-        let mut buf = [0u8; 16];
-        let mut iv: Vec<i64> = Vec::with_capacity(16);
-        for _ in 0..iv.capacity() {
-            iv.push(rand::random());
-        };
-        let password = req.password;
-        
-        // pbkdf2_hmac::<Sha256>(password, iv, 600_000, &mut buf);
-        // ey = buf;
-        // laintext = req.input.body.unwrap();
 
         // Idempotent PUT
         let locator = self
@@ -823,8 +824,42 @@ impl S3 for SkyProxy {
         let mut tasks = tokio::task::JoinSet::new();
         let locators = start_upload_resp.locators;
         let request_template = clone_put_object_request(&req.input, None);
-        let input_blobs = split_streaming_blob(req.input.body.unwrap(), locators.len());
 
+
+        let mut buf = [0u8; 16];
+        let mut iv = [0u8; 16];
+        for i in 0..16 {
+            iv[i] = rand::random();
+        };
+        let password = req.password;
+
+        pbkdf2_hmac::<Sha256>(password.as_bytes(), req.input.key.clone().as_bytes() , 600_000, &mut buf);
+        let key = buf;
+        
+        let mut plaintext = req.input.body.unwrap();
+        let mut buffer = Vec::new();
+        loop {
+            match plaintext.try_next().await {
+                Ok(value) => {
+                    match value {
+                        Some(value) => {
+                            for &i in value.iter() {
+                                buffer.push(i)
+                            }
+                        },
+                        None => break 
+                    }
+                },
+                Err(_) => break
+            }
+        }
+        
+        let mut cipher = Aes128Ctr64LE::new(&key.into(), &iv.into());
+        cipher.apply_keystream(&mut *buffer);
+        let ciphertext = convert_u8_to_bytes(buffer);
+        let signature: Signature = signing_key.sign(buf);
+        let input_blobs = split_streaming_blob(ciphertext, locators.len());
+        
         locators
             .into_iter()
             .zip(input_blobs.into_iter())

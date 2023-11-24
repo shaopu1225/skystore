@@ -1,4 +1,5 @@
 use std::pin::Pin;
+use bytes::Bytes;
 
 use flo_stream::MessagePublisher;
 use s3s::dto::StreamingBlob;
@@ -10,7 +11,7 @@ use tokio_stream::Stream;
 use tokio_stream::StreamExt;
 
 /// A wrapper around a stream that transforms its items into `Result<T, Box<dyn std::error::Error + Send + Sync>>`.
-struct WrapToResultStream<S, T>
+pub struct WrapToResultStream<S, T>
 where
     S: Stream<Item = T> + Unpin,
 {
@@ -22,7 +23,7 @@ impl<S, T> WrapToResultStream<S, T>
 where
     S: Stream<Item = T> + Unpin,
 {
-    fn new(inner: S, size_hint: RemainingLength) -> Self {
+    pub fn new(inner: S, size_hint: RemainingLength) -> Self {
         Self { inner, size_hint }
     }
 }
@@ -87,6 +88,15 @@ pub fn split_streaming_blob(incoming: StreamingBlob, num_splits: usize) -> Vec<S
     });
 
     result
+}
+
+pub fn convert_u8_to_bytes(u8v: Vec<u8>) -> StreamingBlob {
+    let onebyte = Bytes::from(u8v);
+    let bytes = vec![onebyte];
+    let stream = futures::stream::iter(bytes);
+    let wstream = WrapToResultStream::new(stream, RemainingLength::unknown());
+    let ciphertext = StreamingBlob::new(wstream);
+    return ciphertext;
 }
 
 #[cfg(test)]

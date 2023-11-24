@@ -39,7 +39,7 @@ impl S3ObjectStoreClient {
             .force_path_style(true)
             .build();
         let sdk_client = aws_sdk_s3::client::Client::from_conf(s3_config);
-        let s3_proxy = Proxy(sdk_client);
+        let s3_proxy = Proxy::from(sdk_client);
         Self { s3_proxy }
     }
 }

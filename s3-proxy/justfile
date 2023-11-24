@@ -39,7 +39,7 @@ run-registry:
 install-local-s3:
   cargo install --force \
     --git https://github.com/shaopu1225/s3s \
-    --rev e1b15be15739299fea2d6d4cff24eacce21c8c6c \
+    --rev d2c22292f240ee2b766806cb12d96cee4d780b2e \
     --bin s3s-fs \
     --features="binary" \
     s3s-fs
