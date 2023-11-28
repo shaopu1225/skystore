@@ -26,13 +26,20 @@ use pbkdf2::{pbkdf2_hmac, pbkdf2_hmac_array};
 use sha2::Sha256;
 use ctr::cipher::KeyIvInit;
 type Aes128Ctr64LE = ctr::Ctr64LE<aes::Aes128>;
+use lazy_static::lazy_static;
+use serde::{Deserialize, Serialize};
+use std::fs::File;
 
-let signing_key = SigningKey::random(&mut OsRng); 
+
+lazy_static!{
+    static ref signing_key: SigningKey = SigningKey::random(&mut OsRng);
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct EncMacText{
    
     pub encMess: Vec<u8>,
-    pub signature: Signature,
-    
+    pub signature: Vec<u8>,
 }
 pub struct SkyProxy {
     pub store_clients: HashMap<String, Arc<Box<dyn ObjectStoreClient>>>,
@@ -51,9 +58,9 @@ impl SkyProxy {
         policy: String,
         skystore_bucket_prefix: String,
     ) -> Self {
+
         let mut store_clients = HashMap::new();
 
-        
         if local {
             // Local test configuration
             for r in regions {
@@ -856,9 +863,16 @@ impl S3 for SkyProxy {
         
         let mut cipher = Aes128Ctr64LE::new(&key.into(), &iv.into());
         cipher.apply_keystream(&mut *buffer);
-        let ciphertext = convert_u8_to_bytes(buffer);
-        let signature: Signature = signing_key.sign(buf);
-        let input_blobs = split_streaming_blob(ciphertext, locators.len());
+
+
+        let ciphertext = convert_u8_to_bytes(buffer.clone());
+        let s_signature: Signature = signing_key.sign(&buf);
+
+        let mut enmact = EncMacText{encMess: buffer.clone(), signature: s_signature.to_vec()};
+        let bytes = bincode::serialize(&enmact).unwrap();
+        //let s = s_signature.to_bytes();
+
+        let input_blobs = split_streaming_blob(convert_u8_to_bytes(bytes.clone()), locators.len());
         
         locators
             .into_iter()
