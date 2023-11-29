@@ -14,6 +14,8 @@ Name | Type | Description | Notes
 **last_modified** | Option<**String**> |  | [optional]
 **etag** | Option<**String**> |  | [optional]
 **multipart_upload_id** | **String** |  | 
+**iv** | Option<**Vec<i32>**> |  | [optional]
+**encrypted** | Option<**bool**> |  | [optional][default to false]
 **parts** | Option<[**Vec<crate::models::ContinueUploadPhysicalPart>**](ContinueUploadPhysicalPart.md)> |  | [optional]
 **copy_src_bucket** | Option<**String**> |  | [optional]
 **copy_src_key** | Option<**String**> |  | [optional]

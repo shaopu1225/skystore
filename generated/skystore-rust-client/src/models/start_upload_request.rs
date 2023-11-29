@@ -24,6 +24,10 @@ pub struct StartUploadRequest {
     pub copy_src_key: Option<String>,
     #[serde(rename = "policy", skip_serializing_if = "Option::is_none")]
     pub policy: Option<String>,
+    #[serde(rename = "encrypted", skip_serializing_if = "Option::is_none")]
+    pub encrypted: Option<bool>,
+    #[serde(rename = "iv", skip_serializing_if = "Option::is_none")]
+    pub iv: Option<Vec<i32>>,
 }
 
 impl StartUploadRequest {
@@ -41,6 +45,8 @@ impl StartUploadRequest {
             copy_src_bucket: None,
             copy_src_key: None,
             policy: None,
+            encrypted: None,
+            iv: None,
         }
     }
 }

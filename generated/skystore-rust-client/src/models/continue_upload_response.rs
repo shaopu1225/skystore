@@ -30,6 +30,10 @@ pub struct ContinueUploadResponse {
     pub etag: Option<String>,
     #[serde(rename = "multipart_upload_id")]
     pub multipart_upload_id: String,
+    #[serde(rename = "iv", skip_serializing_if = "Option::is_none")]
+    pub iv: Option<Vec<i32>>,
+    #[serde(rename = "encrypted", skip_serializing_if = "Option::is_none")]
+    pub encrypted: Option<bool>,
     #[serde(rename = "parts", skip_serializing_if = "Option::is_none")]
     pub parts: Option<Vec<crate::models::ContinueUploadPhysicalPart>>,
     #[serde(rename = "copy_src_bucket", skip_serializing_if = "Option::is_none")]
@@ -59,6 +63,8 @@ impl ContinueUploadResponse {
             last_modified: None,
             etag: None,
             multipart_upload_id,
+            iv: None,
+            encrypted: None,
             parts: None,
             copy_src_bucket: None,
             copy_src_key: None,

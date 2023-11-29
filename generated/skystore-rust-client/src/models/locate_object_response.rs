@@ -33,6 +33,10 @@ pub struct LocateObjectResponse {
         skip_serializing_if = "Option::is_none"
     )]
     pub multipart_upload_id: Option<String>,
+    #[serde(rename = "iv", skip_serializing_if = "Option::is_none")]
+    pub iv: Option<Vec<i32>>,
+    #[serde(rename = "encrypted", skip_serializing_if = "Option::is_none")]
+    pub encrypted: Option<bool>,
 }
 
 impl LocateObjectResponse {
@@ -55,6 +59,8 @@ impl LocateObjectResponse {
             last_modified: None,
             etag: None,
             multipart_upload_id: None,
+            iv: None,
+            encrypted: None,
         }
     }
 }

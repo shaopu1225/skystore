@@ -1,15 +1,23 @@
 use crate::objstore_client::ObjectStoreClient;
-use crate::utils::stream_utils::split_streaming_blob;
 use crate::utils::stream_utils::convert_u8_to_bytes;
+use crate::utils::stream_utils::split_streaming_blob;
 use crate::utils::type_utils::*;
+use bytes::Bytes;
 use futures::TryStreamExt;
 use s3s::dto::*;
 use s3s::stream::ByteStream;
 use s3s::{S3Request, S3Response, S3Result, S3};
-use bytes::Bytes;
 
+use aes::Aes128;
 use chrono::Utc;
+use ctr::cipher::KeyIvInit;
+use ctr::cipher::StreamCipher;
+use ctr::Ctr64LE;
+use k256::ecdsa::{signature::Signer, signature::Verifier, Signature, SigningKey, VerifyingKey};
+use pbkdf2::{pbkdf2_hmac, pbkdf2_hmac_array};
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+use rand_core::OsRng;
+use sha2::Sha256;
 use skystore_rust_client::apis::configuration::Configuration;
 use skystore_rust_client::apis::default_api as apis;
 use skystore_rust_client::models;
@@ -17,27 +25,33 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::SystemTime;
 use tracing::error;
-use rand_core::OsRng;
-use k256::ecdsa::{SigningKey, Signature, signature::Signer, VerifyingKey, signature::Verifier};
-use ctr::cipher::StreamCipher;
-use ctr::Ctr64LE;
-use aes::Aes128;
-use pbkdf2::{pbkdf2_hmac, pbkdf2_hmac_array};
-use sha2::Sha256;
-use ctr::cipher::KeyIvInit;
 type Aes128Ctr64LE = ctr::Ctr64LE<aes::Aes128>;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 
-
-lazy_static!{
+lazy_static! {
     static ref signing_key: SigningKey = SigningKey::random(&mut OsRng);
 }
-
+async fn _stream_blob_conversion_helper(mut plaintext: StreamingBlob) -> Vec<u8> {
+    let mut buffer = Vec::new();
+    loop {
+        match plaintext.try_next().await {
+            Ok(value) => match value {
+                Some(value) => {
+                    for &i in value.iter() {
+                        buffer.push(i)
+                    }
+                }
+                None => break,
+            },
+            Err(_) => break,
+        }
+    }
+    return buffer;
+}
 #[derive(Serialize, Deserialize)]
-pub struct EncMacText{
-   
+pub struct EncMacText {
     pub encMess: Vec<u8>,
     pub signature: Vec<u8>,
 }
@@ -58,7 +72,6 @@ impl SkyProxy {
         policy: String,
         skystore_bucket_prefix: String,
     ) -> Self {
-
         let mut store_clients = HashMap::new();
 
         if local {
@@ -330,7 +343,7 @@ impl S3 for SkyProxy {
 
             tasks.spawn(async move {
                 let create_bucket_req = new_create_bucket_request(bucket_name.clone(), None);
-                    client
+                client
                     .create_bucket(S3Request::new(create_bucket_req))
                     .await
                     .unwrap();
@@ -675,7 +688,6 @@ impl S3 for SkyProxy {
                             }))
                             .await?;
                         let data = get_resp.output.body.unwrap();
-
                         // Spawn a background task to store the object in the local object store
                         let dir_conf_clone = self.dir_conf.clone();
                         let client_from_region_clone = self.client_from_region.clone();
@@ -696,6 +708,8 @@ impl S3 for SkyProxy {
                                     copy_src_bucket: None,
                                     copy_src_key: None,
                                     policy: Some(policy.clone()),
+                                    encrypted: None,
+                                    iv: None,
                                 },
                             )
                             .await;
@@ -764,7 +778,9 @@ impl S3 for SkyProxy {
                         });
                         return Ok(response);
                     } else {
-                        return self
+                        let password_copy = req.password.clone();
+
+                        let mess = self
                             .store_clients
                             .get(&self.client_from_region)
                             .unwrap()
@@ -774,6 +790,37 @@ impl S3 for SkyProxy {
                                 input
                             }))
                             .await;
+                        if !password_copy.is_empty() {
+                            match (mess) {
+                                Ok(mess) => {
+                                    let mut mess_body = mess.output.body.unwrap();
+                                    let mut buffer =
+                                        _stream_blob_conversion_helper(mess_body).await;
+                                    let length = buffer.len();
+                                    let mut buf2 = vec![0u8; length];
+                                    let mut buf = [0u8; 16];
+                                    pbkdf2_hmac::<Sha256>(
+                                        req.password.as_bytes(),
+                                        req.input.key.clone().as_bytes(),
+                                        600_000,
+                                        &mut buf,
+                                    );
+                                    
+                                    let key = buf;
+                                    let mut cipher = Aes128Ctr64LE::new(&key.into(), &iv.into());
+                                    cipher.apply_keystream_b2b(&buffer, &mut buf2).unwrap();
+                                    return Ok(S3Response::new(GetObjectOutput {
+                                        //body: Some(ByteStream::new(buffer)),
+                                        ..Default::default()
+                                    }));
+                                }
+                                Err(e) => {
+                                    return Err(e);
+                                }
+                            }
+                        }
+
+                        return mess;
                     }
                 } else {
                     return self
@@ -800,8 +847,6 @@ impl S3 for SkyProxy {
         &self,
         req: S3Request<PutObjectInput>,
     ) -> S3Result<S3Response<PutObjectOutput>> {
-
-
         // Idempotent PUT
         let locator = self
             .locate_object(req.input.bucket.clone(), req.input.key.clone())
@@ -812,7 +857,20 @@ impl S3 for SkyProxy {
                 ..Default::default()
             }));
         }
+        let mut iv = [0u8; 16];
+        for i in 0..16 {
+            iv[i] = rand::random();
+        }
 
+        let iv_i32 = Vec::new();
+
+        // transform the iv array to i32 type
+        let i = 0;
+        for item in iv.iter() {
+            iv_i32.push(*item as i32);
+        }
+
+        let is_enc: bool = req.password.is_empty();
         let start_upload_resp = apis::start_upload(
             &self.dir_conf,
             models::StartUploadRequest {
@@ -823,6 +881,8 @@ impl S3 for SkyProxy {
                 copy_src_bucket: None,
                 copy_src_key: None,
                 policy: Some(self.policy.clone()),
+                encrypted: Some(is_enc),
+                iv: Some(iv_i32),
             },
         )
         .await
@@ -832,48 +892,51 @@ impl S3 for SkyProxy {
         let locators = start_upload_resp.locators;
         let request_template = clone_put_object_request(&req.input, None);
 
-
         let mut buf = [0u8; 16];
-        let mut iv = [0u8; 16];
-        for i in 0..16 {
-            iv[i] = rand::random();
-        };
         let password = req.password;
 
-        pbkdf2_hmac::<Sha256>(password.as_bytes(), req.input.key.clone().as_bytes() , 600_000, &mut buf);
+        pbkdf2_hmac::<Sha256>(
+            password.as_bytes(),
+            req.input.key.clone().as_bytes(),
+            600_000,
+            &mut buf,
+        );
         let key = buf;
-        
+
         let mut plaintext = req.input.body.unwrap();
-        let mut buffer = Vec::new();
-        loop {
-            match plaintext.try_next().await {
-                Ok(value) => {
-                    match value {
-                        Some(value) => {
-                            for &i in value.iter() {
-                                buffer.push(i)
-                            }
-                        },
-                        None => break 
-                    }
-                },
-                Err(_) => break
-            }
-        }
-        
+        // let mut buffer = Vec::new();
+        // loop {
+        //     match plaintext.try_next().await {
+        //         Ok(value) => {
+        //             match value {
+        //                 Some(value) => {
+        //                     for &i in value.iter() {
+        //                         buffer.push(i)
+        //                     }
+        //                 },
+        //                 None => break
+        //             }
+        //         },
+        //         Err(_) => break
+        //     }
+        // }
+        let mut buffer = _stream_blob_conversion_helper(plaintext).await;
+
         let mut cipher = Aes128Ctr64LE::new(&key.into(), &iv.into());
         cipher.apply_keystream(&mut *buffer);
-
 
         let ciphertext = convert_u8_to_bytes(buffer.clone());
         let s_signature: Signature = signing_key.sign(&buf);
 
-        let mut enmact = EncMacText{encMess: buffer.clone(), signature: s_signature.to_vec()};
+        let mut enmact = EncMacText {
+            encMess: buffer.clone(),
+            signature: s_signature.to_vec(),
+        };
         let bytes = bincode::serialize(&enmact).unwrap();
         //let s = s_signature.to_bytes();
 
         let input_blobs = split_streaming_blob(convert_u8_to_bytes(bytes.clone()), locators.len());
-        
+
         locators
             .into_iter()
             .zip(input_blobs.into_iter())
@@ -1187,6 +1250,8 @@ impl S3 for SkyProxy {
                 copy_src_bucket: Some(src_bucket.to_string()),
                 copy_src_key: Some(src_key.to_string()),
                 policy: Some(self.policy.clone()),
+                encrypted: None,
+                iv: None,
             },
         )
         .await
@@ -1288,6 +1353,8 @@ impl S3 for SkyProxy {
                 copy_src_bucket: None,
                 copy_src_key: None,
                 policy: Some(policy),
+                encrypted: None,
+                iv: None,
             },
         )
         .await
@@ -1753,4 +1820,3 @@ impl S3 for SkyProxy {
         }))
     }
 }
-

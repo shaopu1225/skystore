@@ -11,6 +11,8 @@ Name | Type | Description | Notes
 **copy_src_bucket** | Option<**String**> |  | [optional]
 **copy_src_key** | Option<**String**> |  | [optional]
 **policy** | Option<**String**> |  | [optional][default to pull]
+**encrypted** | Option<**bool**> |  | [optional][default to false]
+**iv** | Option<**Vec<i32>**> |  | [optional]
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
 

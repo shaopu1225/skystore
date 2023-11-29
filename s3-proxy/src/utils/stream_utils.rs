@@ -1,5 +1,5 @@
-use std::pin::Pin;
 use bytes::Bytes;
+use std::pin::Pin;
 
 use flo_stream::MessagePublisher;
 use s3s::dto::StreamingBlob;

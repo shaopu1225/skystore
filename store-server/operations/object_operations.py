@@ -390,6 +390,7 @@ async def start_upload(
             etag=None,
             status=Status.pending,
             multipart_upload_id=uuid.uuid4().hex if request.is_multipart else None,
+            encrypted=request.encrypted,
         )
         db.add(logical_object)
     else:

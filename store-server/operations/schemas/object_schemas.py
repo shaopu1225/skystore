@@ -29,6 +29,9 @@ class DBLogicalObject(Base):
     last_modified = Column(DateTime)
     etag = Column(String)
     status = Column(Enum(Status))
+    
+    encrypted = Column(Boolean, nullable=False, default=False)
+    
 
     # NOTE: we are only supporting one upload for now. This can be changed when we are supporting versioning.
     multipart_upload_id = Column(String)
@@ -152,6 +155,9 @@ class StartUploadRequest(LocateObjectRequest):
 
     # Policy
     policy: Optional[str] = "pull"
+    
+    encrypted: bool = False
+    iv: Optional[List[int]] = None
 
 
 class StartUploadResponse(BaseModel):
