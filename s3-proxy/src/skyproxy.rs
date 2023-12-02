@@ -7,7 +7,7 @@ use futures::TryStreamExt;
 use s3s::dto::*;
 use s3s::stream::ByteStream;
 use s3s::{S3Request, S3Response, S3Result, S3};
-
+use std::env;
 use aes::Aes128;
 use chrono::Utc;
 use ctr::cipher::KeyIvInit;
@@ -21,6 +21,7 @@ use sha2::Sha256;
 use skystore_rust_client::apis::configuration::Configuration;
 use skystore_rust_client::apis::default_api as apis;
 use skystore_rust_client::models;
+use skystore_rust_client::models::LocateObjectResponse;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -61,6 +62,44 @@ pub struct SkyProxy {
     pub client_from_region: String,
     pub policy: String,
     pub skystore_bucket_prefix: String,
+}
+
+
+    async fn decrypt_verify(mess:S3Response<GetObjectOutput>, key:String , password_copy:String, location:LocateObjectResponse)->StreamingBlob{
+    let mess_body = mess.output.body.unwrap();
+    let buffer = _stream_blob_conversion_helper(mess_body).await;
+    let length = buffer.len();
+    let mut buf2 = vec![0u8; length];
+    let mut buf = [0u8; 16];
+    pbkdf2_hmac::<Sha256>(
+            password_copy.as_bytes(),
+            key.clone().as_bytes(),
+                600_000,
+                &mut buf,
+            );
+                                
+                                let key = buf;
+                                let iv = location.iv.unwrap();
+
+                                let mut ivv = [0u8; 16];
+                                for i in 0..16 {
+                                    ivv[i] = iv[i] as u8;
+                                }
+                                let verify_key = signing_key.verifying_key();                                    
+                                let encrypt_sig:EncMacText  = bincode::deserialize(&buffer).unwrap();
+                                let signature_slice = &encrypt_sig.signature[..];
+                                let signature = Signature::from_slice(signature_slice).unwrap();
+                                let encryptedmess = &encrypt_sig.encMess[..];
+                                let rtn = verify_key.verify(encryptedmess, &signature).is_ok();
+                                if rtn{
+                                    let buf_stream = convert_u8_to_bytes(buf2.clone());
+                                    let mut cipher = Aes128Ctr64LE::new(&key.into(), &ivv.into());
+                                    cipher.apply_keystream_b2b(&encrypt_sig.encMess, &mut buf2).unwrap();
+                                    return buf_stream;
+                                } else{
+                                    panic!("verifying failed!");
+                                }
+
 }
 
 impl SkyProxy {
@@ -662,20 +701,22 @@ impl S3 for SkyProxy {
     //         )),
     //     }
     // }
-
+    
     #[tracing::instrument(level = "info")]
     async fn get_object(
         &self,
         req: S3Request<GetObjectInput>,
     ) -> S3Result<S3Response<GetObjectOutput>> {
+        env::set_var("RUST_BACKTRACE", "1");
         let bucket = req.input.bucket.clone();
         let key = req.input.key.clone();
+        let headers = req.headers.clone();
 
         let locator = self.locate_object(bucket.clone(), key.clone()).await?;
 
         match locator {
             Some(location) => {
-                if req.headers.get("X-SKYSTORE-PULL").is_some() {
+                if headers.get("X-SKYSTORE-PULL").is_some() {
                     if location.tag != self.client_from_region {
                         let get_resp = self
                             .store_clients
@@ -793,26 +834,44 @@ impl S3 for SkyProxy {
                         if !password_copy.is_empty() {
                             match (mess) {
                                 Ok(mess) => {
-                                    let mut mess_body = mess.output.body.unwrap();
-                                    let mut buffer =
+                                    let mess_body = mess.output.body.unwrap();
+                                    let buffer =
                                         _stream_blob_conversion_helper(mess_body).await;
                                     let length = buffer.len();
                                     let mut buf2 = vec![0u8; length];
                                     let mut buf = [0u8; 16];
                                     pbkdf2_hmac::<Sha256>(
-                                        req.password.as_bytes(),
-                                        req.input.key.clone().as_bytes(),
+                                        password_copy.as_bytes(),
+                                        key.clone().as_bytes(),
                                         600_000,
                                         &mut buf,
                                     );
                                     
                                     let key = buf;
-                                    let mut cipher = Aes128Ctr64LE::new(&key.into(), &iv.into());
-                                    cipher.apply_keystream_b2b(&buffer, &mut buf2).unwrap();
-                                    return Ok(S3Response::new(GetObjectOutput {
-                                        //body: Some(ByteStream::new(buffer)),
-                                        ..Default::default()
-                                    }));
+                                    let iv = location.iv.unwrap();
+
+                                    let mut ivv = [0u8; 16];
+                                    for i in 0..16 {
+                                        ivv[i] = iv[i] as u8;
+                                    }
+                                    let verify_key = signing_key.verifying_key();                                    
+                                    let encrypt_sig:EncMacText  = bincode::deserialize(&buffer).unwrap();
+                                    let signature_slice = &encrypt_sig.signature[..];
+                                    let signature = Signature::from_slice(signature_slice).unwrap();
+                                    let encryptedmess = &encrypt_sig.encMess[..];
+                                    let rtn = verify_key.verify(encryptedmess, &signature).is_ok();
+                                    if rtn{
+                                        let buf_stream = convert_u8_to_bytes(buf2.clone());
+                                        let mut cipher = Aes128Ctr64LE::new(&key.into(), &ivv.into());
+                                        cipher.apply_keystream_b2b(&encrypt_sig.encMess, &mut buf2).unwrap();
+                                        return Ok(S3Response::new(GetObjectOutput {
+                                            body: Some(buf_stream),
+                                            ..Default::default()
+                                        }));
+
+                                    } else{
+                                        panic!("verifying failed!");
+                                    }
                                 }
                                 Err(e) => {
                                     return Err(e);
@@ -862,7 +921,7 @@ impl S3 for SkyProxy {
             iv[i] = rand::random();
         }
 
-        let iv_i32 = Vec::new();
+        let mut iv_i32 = Vec::new();
 
         // transform the iv array to i32 type
         let i = 0;
