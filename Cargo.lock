@@ -2344,7 +2344,7 @@ checksum = "fe232bdf6be8c8de797b22184ee71118d63780ea42ac85b61d1baa6d3b782ae9"
 [[package]]
 name = "s3s"
 version = "0.6.1-dev"
-source = "git+https://github.com/shaopu1225/s3s.git?rev=d2c22292f240ee2b766806cb12d96cee4d780b2e#d2c22292f240ee2b766806cb12d96cee4d780b2e"
+source = "git+https://github.com/shaopu1225/s3s.git?rev=ebe833f560917358bae06f9a62a3a943c2314d87#ebe833f560917358bae06f9a62a3a943c2314d87"
 dependencies = [
  "arrayvec",
  "async-trait",
@@ -2383,7 +2383,7 @@ dependencies = [
 [[package]]
 name = "s3s-aws"
 version = "0.6.1-dev"
-source = "git+https://github.com/shaopu1225/s3s.git?rev=d2c22292f240ee2b766806cb12d96cee4d780b2e#d2c22292f240ee2b766806cb12d96cee4d780b2e"
+source = "git+https://github.com/shaopu1225/s3s.git?rev=ebe833f560917358bae06f9a62a3a943c2314d87#ebe833f560917358bae06f9a62a3a943c2314d87"
 dependencies = [
  "async-trait",
  "aws-sdk-s3",

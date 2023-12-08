@@ -12,8 +12,8 @@ aws-sdk-s3 = "0.28.0"
 http = "0.2.9"
 hyper = { version = "0.14.26", features = ["full"] }
 reqwest = "0.11.17"
-s3s = { git = "https://github.com/shaopu1225/s3s.git", rev = "d2c22292f240ee2b766806cb12d96cee4d780b2e" }
-s3s-aws = { git = "https://github.com/shaopu1225/s3s.git", rev = "d2c22292f240ee2b766806cb12d96cee4d780b2e" }
+s3s = { git = "https://github.com/shaopu1225/s3s.git", rev = "ebe833f560917358bae06f9a62a3a943c2314d87" }
+s3s-aws = { git = "https://github.com/shaopu1225/s3s.git", rev = "ebe833f560917358bae06f9a62a3a943c2314d87" }
 serde = "1.0.160"
 serde_json = "1.0.96"
 syn = "2.0.15"
