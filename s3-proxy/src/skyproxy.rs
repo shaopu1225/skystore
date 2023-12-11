@@ -8,6 +8,7 @@ use s3s::dto::*;
 use s3s::stream::ByteStream;
 use s3s::{S3Request, S3Response, S3Result, S3};
 use std::env;
+// use std::error::Error;
 use aes::Aes128;
 use chrono::Utc;
 use ctr::cipher::KeyIvInit;
@@ -30,7 +31,10 @@ type Aes128Ctr64LE = ctr::Ctr64LE<aes::Aes128>;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
-
+use std::{thread, time};
+use reqwest::ClientBuilder;
+use reqwest::Client;
+use tokio::time::Duration;
 lazy_static! {
     static ref signing_key: SigningKey = SigningKey::random(&mut OsRng);
 }
@@ -51,7 +55,7 @@ async fn _stream_blob_conversion_helper(mut plaintext: StreamingBlob) -> Vec<u8>
     }
     return buffer;
 }
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct EncMacText {
     pub encMess: Vec<u8>,
     pub signature: Vec<u8>,
@@ -132,7 +136,7 @@ impl SkyProxy {
                 let skystore_bucket_name = format!("{}-{}", skystore_bucket_prefix, region);
                 match client
                     .create_bucket(S3Request::new(new_create_bucket_request(
-                        skystore_bucket_name,
+                        skystore_bucket_name.clone(),
                         Some(r),
                     )))
                     .await
@@ -225,8 +229,9 @@ impl SkyProxy {
                 "http://127.0.0.1:3000".to_string()
             } else {
                 // NOTE: ip address set to be the remote store-server addr
-                "http://54.183.123.82:3000".to_string()
+                "http://54.183.193.192:3000".to_string()
             },
+            client: ClientBuilder::new().timeout(Duration::from_secs(30000)).pool_idle_timeout(Duration::from_secs(30000)).connect_timeout(std::time::Duration::from_millis(60000000)).pool_max_idle_per_host(0).build().unwrap(),
             ..Default::default()
         };
 
@@ -234,12 +239,14 @@ impl SkyProxy {
             .await
             .expect("directory service not healthy");
 
+        // dir_conf.client.timeout(Duration::from_secs(30));
         Self {
             store_clients,
+            policy,
             dir_conf,
             client_from_region,
-            policy,
             skystore_bucket_prefix,
+
         }
     }
 }
@@ -277,6 +284,7 @@ impl SkyProxy {
         bucket: String,
         key: String,
     ) -> Result<Option<models::LocateObjectResponse>, s3s::S3Error> {
+        println!("proxy location obejct i");
         let locate_resp = apis::locate_object(
             &self.dir_conf,
             models::LocateObjectRequest {
@@ -286,7 +294,7 @@ impl SkyProxy {
             },
         )
         .await;
-
+        println!("after proxy location obejct i");
         match locate_resp {
             Ok(locator) => Ok(Some(locator)),
             Err(error) => {
@@ -295,6 +303,7 @@ impl SkyProxy {
                 if is_404 {
                     Ok(None)
                 } else {
+                    println!("after proxy location obejct i error {:?}", error);
                     Err(s3s::S3Error::with_message(
                         s3s::S3ErrorCode::InternalError,
                         "locate_object failed",
@@ -707,17 +716,20 @@ impl S3 for SkyProxy {
         &self,
         req: S3Request<GetObjectInput>,
     ) -> S3Result<S3Response<GetObjectOutput>> {
+        println!("get object reach here---------------------------------------------");
         env::set_var("RUST_BACKTRACE", "1");
         let bucket = req.input.bucket.clone();
         let key = req.input.key.clone();
         let headers = req.headers.clone();
-
+        println!("? reach here {:?} {:?}\n", bucket, key);
         let locator = self.locate_object(bucket.clone(), key.clone()).await?;
-
+        println!("? reach here\n");
         match locator {
             Some(location) => {
                 if headers.get("X-SKYSTORE-PULL").is_some() {
+                    println!("get object policy skystore pull here---------------------------------------------");
                     if location.tag != self.client_from_region {
+                        println!("client_from_region?");
                         let get_resp = self
                             .store_clients
                             .get(&location.tag)
@@ -819,7 +831,8 @@ impl S3 for SkyProxy {
                         });
                         return Ok(response);
                     } else {
-                        let password_copy = req.password.clone();
+                        println!("else case?");
+                        let password_copy = (*req.password.borrow_mut()).clone();
 
                         let mess = self
                             .store_clients
@@ -832,22 +845,34 @@ impl S3 for SkyProxy {
                             }))
                             .await;
                         if !password_copy.is_empty() {
+                            println!("get object reach encrypted here---------------------------------------------");
                             match (mess) {
-                                Ok(mess) => {
-                                    let mess_body = mess.output.body.unwrap();
+                                Ok(mess_c) => {
+                                    let mess_body = mess_c.output.body.unwrap();
                                     let buffer =
                                         _stream_blob_conversion_helper(mess_body).await;
-                                    let length = buffer.len();
-                                    let mut buf2 = vec![0u8; length];
-                                    let mut buf = [0u8; 16];
-                                    pbkdf2_hmac::<Sha256>(
-                                        password_copy.as_bytes(),
-                                        key.clone().as_bytes(),
-                                        600_000,
-                                        &mut buf,
-                                    );
+                                    let mut buf = [0u8; 32];
+
+                                    // return Ok(S3Response::new(GetObjectOutput {
+        
+                                    //     ..Default::default()
+                                    // } ));
+
+                                    // pbkdf2_hmac::<Sha256>(
+                                    //     password_copy.as_bytes(),
+                                    //     key.clone().as_bytes(),
+                                    //     600_000,
+                                    //     &mut buf,
+                                    // );
                                     
-                                    let key = buf;
+                                    let key_arr = pbkdf2_hmac_array::<Sha256, 16>(password_copy.as_bytes(), key.clone().as_bytes(), 600000);
+                                    // thread::sleep(time::Duration::from_millis(6000));
+                                    println!("array key sssssssssssssssssssssssssssssssssssssssss{:?}",key_arr);
+                                    // let key = buf;
+
+                                    // let key_arr = [0u8;16];
+
+                                    // let key = [0u8; 16];
                                     let iv = location.iv.unwrap();
 
                                     let mut ivv = [0u8; 16];
@@ -858,19 +883,26 @@ impl S3 for SkyProxy {
                                     let encrypt_sig:EncMacText  = bincode::deserialize(&buffer).unwrap();
                                     let signature_slice = &encrypt_sig.signature[..];
                                     let signature = Signature::from_slice(signature_slice).unwrap();
+                                    println!("get object signature: {:?}", signature);
                                     let encryptedmess = &encrypt_sig.encMess[..];
+                                    let length = encryptedmess.len();
+                                    let mut buf2 = vec![0u8; length];
+                                    println!("get object encryptedmess: {:?}", encryptedmess);
                                     let rtn = verify_key.verify(encryptedmess, &signature).is_ok();
                                     if rtn{
+                                        let mut cipher = Aes128Ctr64LE::new(&key_arr.into(), &ivv.into());
+                                        cipher.apply_keystream_b2b(encryptedmess, &mut buf2).unwrap();
                                         let buf_stream = convert_u8_to_bytes(buf2.clone());
-                                        let mut cipher = Aes128Ctr64LE::new(&key.into(), &ivv.into());
-                                        cipher.apply_keystream_b2b(&encrypt_sig.encMess, &mut buf2).unwrap();
                                         return Ok(S3Response::new(GetObjectOutput {
                                             body: Some(buf_stream),
                                             ..Default::default()
                                         }));
 
+                                    
+                                   
+
                                     } else{
-                                        panic!("verifying failed!");
+                                        panic!("wtf verifying failed!");
                                     }
                                 }
                                 Err(e) => {
@@ -882,6 +914,7 @@ impl S3 for SkyProxy {
                         return mess;
                     }
                 } else {
+                    println!("should reach here ulmatly there is not encryption ");
                     return self
                         .store_clients
                         .get(&location.tag)
@@ -916,6 +949,7 @@ impl S3 for SkyProxy {
                 ..Default::default()
             }));
         }
+        
         let mut iv = [0u8; 16];
         for i in 0..16 {
             iv[i] = rand::random();
@@ -929,7 +963,9 @@ impl S3 for SkyProxy {
             iv_i32.push(*item as i32);
         }
 
-        let is_enc: bool = req.password.is_empty();
+        let is_enc: bool = (*req.password.borrow_mut()).is_empty();
+        println!("password --------------------------------------{:?}", req.password);
+        println!("password is empty --------------------------------------{:?}", is_enc);
         let start_upload_resp = apis::start_upload(
             &self.dir_conf,
             models::StartUploadRequest {
@@ -955,46 +991,69 @@ impl S3 for SkyProxy {
         let password = req.password;
 
         pbkdf2_hmac::<Sha256>(
-            password.as_bytes(),
+            (*password.borrow_mut()).clone().as_bytes(),
             req.input.key.clone().as_bytes(),
             600_000,
             &mut buf,
         );
         let key = buf;
+        
+        let input_blobs;
+        if !is_enc {
+            println!("put object get encrypted!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+            let plaintext = req.input.body.unwrap();
+            // let mut buffer = Vec::new();
+            // loop {
+            //     match plaintext.try_next().await {
+            //         Ok(value) => {
+            //             match value {
+            //                 Some(value) => {
+            //                     for &i in value.iter() {
+            //                         buffer.push(i)
+            //                     }
+            //                 },
+            //                 None => break
+            //             }
+            //         },
+            //         Err(_) => break
+            //     }
+            // }
+            // let mut buffer = _stream_blob_conversion_helper(plaintext).await;
+            let buffer1 = _stream_blob_conversion_helper(plaintext).await;
 
-        let mut plaintext = req.input.body.unwrap();
-        // let mut buffer = Vec::new();
-        // loop {
-        //     match plaintext.try_next().await {
-        //         Ok(value) => {
-        //             match value {
-        //                 Some(value) => {
-        //                     for &i in value.iter() {
-        //                         buffer.push(i)
-        //                     }
-        //                 },
-        //                 None => break
-        //             }
-        //         },
-        //         Err(_) => break
-        //     }
-        // }
-        let mut buffer = _stream_blob_conversion_helper(plaintext).await;
+            let mut cipher = Aes128Ctr64LE::new(&key.into(), &iv.into());
+            let mut buffer: Vec<u8> = Vec::new();
+            // let mut temp = buffer1.into_boxed_slice();
+            // let mut temp = buffer1.try_into();
+            // let mut arr:[u8]= temp.unwrap();
 
-        let mut cipher = Aes128Ctr64LE::new(&key.into(), &iv.into());
-        cipher.apply_keystream(&mut *buffer);
+            let temp: &[u8]= &buffer1;
+            let buf : &mut [u8]= & mut(buffer1.clone());
+            // cipher.apply_keystream(&mut *buffer);
+            cipher.apply_keystream_b2b(temp, buf).unwrap();
+            // let mut buffer = vec!(buf);
+            // let ciphertext = convert_u8_to_bytes(buffer.clone());
+            let s_signature: Signature = signing_key.sign(buf);
+            for i in 0..buf.len() { 
+                buffer.push(buf[i]);
+            } 
+            let enmact = EncMacText {
+                encMess: buffer.clone(),
+                signature: s_signature.to_vec(),
+            };
+            println!("singature: {:?}", s_signature);
+            println!("enmact: {:?}", enmact);
+            let bytes = bincode::serialize(&enmact).unwrap();
+            println!("convert_u8_2_bytes: {:?}", convert_u8_to_bytes(bytes.clone()));
+            //let s = s_signature.to_bytes();
+            input_blobs = split_streaming_blob(convert_u8_to_bytes(bytes.clone()), locators.len());
 
-        let ciphertext = convert_u8_to_bytes(buffer.clone());
-        let s_signature: Signature = signing_key.sign(&buf);
-
-        let mut enmact = EncMacText {
-            encMess: buffer.clone(),
-            signature: s_signature.to_vec(),
-        };
-        let bytes = bincode::serialize(&enmact).unwrap();
-        //let s = s_signature.to_bytes();
-
-        let input_blobs = split_streaming_blob(convert_u8_to_bytes(bytes.clone()), locators.len());
+        } else {
+            println!("put object shoudln't be encrypted!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+            input_blobs = split_streaming_blob(req.input.body.unwrap(), locators.len());
+        }
+        
+        
 
         locators
             .into_iter()

@@ -131,6 +131,7 @@ async def shutdown_event():
 
 @app.on_event("startup")
 async def startup():
+    print("start actually")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         # await conn.exec_driver_sql("pragma journal_mode=memory")

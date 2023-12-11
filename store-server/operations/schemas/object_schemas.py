@@ -7,7 +7,10 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    ARRAY,
+    PickleType,
 )
+from sqlalchemy.ext.mutable import MutableList
 from sqlalchemy.orm import relationship
 from pydantic import BaseModel, Field, NonNegativeInt
 from operations.utils.conf import Base, Status
@@ -29,7 +32,6 @@ class DBLogicalObject(Base):
     last_modified = Column(DateTime)
     etag = Column(String)
     status = Column(Enum(Status))
-    
     encrypted = Column(Boolean, nullable=False, default=False)
     
 
@@ -75,6 +77,10 @@ class DBPhysicalObjectLocator(Base):
     is_primary = Column(Boolean, nullable=False, default=False)
 
     multipart_upload_id = Column(String)
+    # iv = Column(Integer)
+    # iv = Column(MutableList.as_mutable(Integer),
+    #                                 default=[1,])
+    iv = Column(PickleType)
     multipart_upload_parts = relationship(
         "DBPhysicalMultipartUploadPart",
         back_populates="physical_object_locator",
@@ -88,6 +94,7 @@ class DBPhysicalObjectLocator(Base):
     logical_object = relationship(
         "DBLogicalObject", back_populates="physical_object_locators"
     )
+    
 
 
 class LocateObjectRequest(BaseModel):

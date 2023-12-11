@@ -37,7 +37,7 @@ from fastapi import APIRouter, Response, Depends, status
 from operations.utils.db import get_session, logger
 from typing import List
 from datetime import datetime
-
+import pickle
 router = APIRouter()
 
 
@@ -182,6 +182,33 @@ async def complete_delete_objects(
             return Response(status_code=500, content="Error committing changes")
 
 
+
+# is_multipart: bool
+#     # If we are performing a copy, we want to locate the source object physical locations,
+#     # and only return the locators in the same locations so the client can do "local bucket copy".
+#     # NOTE: for future, consider whether the bucket is needed here. Should we only do intra-bucket copy?
+#     copy_src_bucket: Optional[str] = None
+#     copy_src_key: Optional[str] = None
+
+#     # Policy
+#     policy: Optional[str] = "pull"
+    
+#     encrypted: bool = False
+#     iv: Optional[List[int]] = None
+
+    # send post forward_proxy
+
+
+# @router.post(
+#     "/receive_proxy",
+#     responses={
+#         status.HTTP_200_OK: {"data": str},
+#         status.HTTP_404_NOT_FOUND: {"description": "Object not found"},
+#     },
+# )
+# async def receive_proxy(request: StartUploadRequest, db: Session = Depends(get_session)):
+#     pass
+
 @router.post(
     "/locate_object",
     responses={
@@ -192,6 +219,7 @@ async def complete_delete_objects(
 async def locate_object(
     request: LocateObjectRequest, db: Session = Depends(get_session)
 ) -> LocateObjectResponse:
+    print("db reach 22111111111111111111111111111111111")
     """Given the logical object information, return one or zero physical object locators."""
     stmt = (
         select(DBPhysicalObjectLocator)
@@ -231,7 +259,7 @@ async def locate_object(
     )
 
     await db.refresh(chosen_locator, ["logical_object"])
-
+    print("db reach 111111111111111111111111111111111")
     return LocateObjectResponse(
         id=chosen_locator.id,
         tag=chosen_locator.location_tag,
@@ -242,6 +270,8 @@ async def locate_object(
         size=chosen_locator.logical_object.size,
         last_modified=chosen_locator.logical_object.last_modified,
         etag=chosen_locator.logical_object.etag,
+        # iv=list(chosen_locator.iv),
+        iv = pickle.loads(chosen_locator.iv),
     )
 
 
@@ -306,7 +336,7 @@ async def start_warmup(
             region=physical_bucket_locator.region,
             bucket=physical_bucket_locator.bucket,
             key=physical_bucket_locator.prefix + request.key,
-            status=Status.pending,
+            status=Status.pepdfnding,
             is_primary=False,
         )
         secondary_locators.append(secondary_locator)
@@ -338,13 +368,43 @@ async def start_warmup(
         ],
     )
 
+# 转发的一个方法
+# ：转发
+# ：写入
 
+# 不转发的一个方法
+# ：写入
+
+# 写入
+
+
+
+async def foward_upload(fow_request):
+    import requests
+    resp = requests.post(
+            "http://127.0.0.2:3000/start_upload_forward",
+            json={
+                "is_multipart" : fow_request.is_multipart, "copy_src_bucket": fow_request.copy_src_bucket, 
+                "copy_src_key": fow_request.copy_src_key, "policy": fow_request.policy, "encrypted": fow_request.encrypted,
+                "iv": fow_request.iv, "bucket": fow_request.bucket, "key":fow_request.key, "client_from_region": fow_request.client_from_region
+            }
+        )
+    return resp
 @router.post("/start_upload")
 async def start_upload(
     request: StartUploadRequest, db: Session = Depends(get_session)
 ) -> StartUploadResponse:
-    # TODO: policy check
+    r = await foward_upload(request)
+    print("server backup ", r)
+    return await upload(request, db)
 
+@router.post("/start_upload_forward")
+async def start_upload_forward(request: StartUploadRequest, db: Session = Depends(get_session)) -> StartUploadResponse:
+    print("start upload forward enter")
+    return await upload(request, db)
+    # TODO: policy check
+async def upload( request: StartUploadRequest, db: Session = Depends(get_session)) -> StartUploadResponse:
+    # await foward_upload(request)
     existing_objects_stmt = (
         select(DBPhysicalObjectLocator)
         .join(DBLogicalObject)
@@ -522,6 +582,7 @@ async def start_upload(
                 is_primary=(
                     region_tag == primary_write_region
                 ),  # NOTE: location of first write is primary
+                iv = pickle.dumps(request.iv),
             )
         )
 

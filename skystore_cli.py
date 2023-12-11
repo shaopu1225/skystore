@@ -43,6 +43,9 @@ def init(
     policy: Policy = typer.Option(
         Policy.write_local, "--policy", help="Policy to use for data placement"
     ),
+    test_field: bool = typer.Option(
+        False, "--tes"
+    )
 ):
     with open(config_file, "r") as f:
         config = json.load(f)
@@ -53,6 +56,12 @@ def init(
         if "skystore_bucket_prefix" in config
         else "skystore"
     )
+    if "skystore_db_name" not in config:
+        config["skystore_db_name"] = "skystore.db"
+    if "ip_address" not in config:
+        print("not find")
+        config["ip_address"] = "127.0.0.2"
+    print("find", config["ip_address"])
     env = {
         **os.environ,
         "INIT_REGIONS": init_regions_str,
@@ -65,6 +74,8 @@ def init(
         "LOCAL_SERVER": str(start_server).lower(),
         "POLICY": policy,
         "SKYSTORE_BUCKET_PREFIX": skystore_bucket_prefix,
+        "SKYSTORE_DB_NAME": config["skystore_db_name"],
+        "IP_ADDRESS": config["ip_address"],
     }
     env = {k: v for k, v in env.items() if v is not None}
 
@@ -87,7 +98,7 @@ def init(
     if start_server:
         subprocess.Popen(
             f"cd {DEFAULT_STORE_SERVER_PATH}; "
-            "rm skystore.db; python3 -m uvicorn app:app --reload --port 3000",
+            "rm " + config["skystore_db_name"] + "; python3 -m uvicorn app:app --reload --port 3000 --host " + config["ip_address"],
             shell=True,
             env=env,
         )
@@ -96,15 +107,18 @@ def init(
 
     # Start the s3-proxy
     if os.path.exists(sky_s3_binary_path):
-        subprocess.Popen(
-            sky_s3_binary_path,
-            env=env,
-        )
+        # subprocess.Popen(
+        #     sky_s3_binary_path,
+        #     env=env,
+        # )
+        pass
     else:
-        subprocess.Popen(
-            ["cargo", "run"],
-            env=env,
-        )
+        # subprocess.Popen(
+        #     ["cargo", "run"],
+        #     env=env,
+        # )
+        pass
+    print("end\n")
     typer.secho(f"SkyStore initialized at: {'http://127.0.0.1:8002'}", fg="green")
 
 

@@ -15,9 +15,9 @@ logging.basicConfig(
 
 logger = logging.getLogger("skystore")
 LOG_SQL = os.environ.get("LOG_SQL", "false").lower() == "1"
-
+db_name = os.environ.get("skystore_db_name", "skystore.db")
 engine = create_async_engine(
-    "sqlite+aiosqlite:///skystore.db",
+    "sqlite+aiosqlite:///" + db_name,
     echo=LOG_SQL,
     future=True,
 )

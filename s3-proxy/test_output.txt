@@ -1,0 +1,40 @@
+/Users/junhaohu/.cargo/bin/s3s-fs
+  2023-12-03T10:30:22.193183Z  INFO s3s_fs: server is running at http://[::1]:8014
+    at crates/s3s-fs/src/main.rs:104
+
+
+running 2 tests
+INFO:     127.0.0.1:64612 - "GET /healthz HTTP/1.1" 200 OK
+test skyproxy_test::tests::test_constructor ... ok
+INFO:     127.0.0.1:64620 - "GET /healthz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64620 - "POST /start_create_bucket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64620 - "PATCH /complete_create_bucket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64620 - "PATCH /complete_create_bucket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64620 - "PATCH /complete_create_bucket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64620 - "PATCH /complete_create_bucket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64620 - "PATCH /complete_create_bucket HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64620 - "PATCH /complete_create_bucket HTTP/1.1" 200 OK
+--body--: [97, 98, 99, 100, 101, 102, 103]
+INFO:     127.0.0.1:64620 - "POST /locate_object HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64620 - "POST /start_upload HTTP/1.1" 200 OK
+singature: ecdsa::Signature<Secp256k1>(1D3FF31B0D1FD3E68BA4063E8F270E97FE7B2053636D7067FA20A4CCE36D5FA33873CC8462563B2D7D66E5BB17EED1ACE0B7DEF3547EF65B9DC17496EA427BF7)
+enmact: EncMacText { encMess: [228, 32, 20, 119, 215, 162, 135], signature: [29, 63, 243, 27, 13, 31, 211, 230, 139, 164, 6, 62, 143, 39, 14, 151, 254, 123, 32, 83, 99, 109, 112, 103, 250, 32, 164, 204, 227, 109, 95, 163, 56, 115, 204, 132, 98, 86, 59, 45, 125, 102, 229, 187, 23, 238, 209, 172, 224, 183, 222, 243, 84, 126, 246, 91, 157, 193, 116, 150, 234, 66, 123, 247] }
+convert_u8_2_bytes: StreamingBlob { remaining_length: 87, .. }
+  2023-12-03T10:30:35.942618Z DEBUG s3s_fs::s3: write file, path: /private/tmp/s3-local-cache/skystore-us-west-1/my-key, size: 87, md5_sum: 98cf1305ea8eaf560be786dbc63808d2, checksum: Checksum { .. }
+    at crates/s3s-fs/src/s3.rs:460
+    in s3s_fs::s3::put_object with self: FileSystem { root: "/private/tmp/s3-local-cache" }, req: S3Request { input: PutObjectInput { body: StreamingBlob { remaining_length: 87, .. }, bucket: "skystore-us-west-1", content_length: 87, content_type: "application/octet-stream", key: "my-key", .. }, credentials: Some(Credentials { access_key: "aws_access_key_id_dummy", secret_key: SecretKey("[SECRET-KEY]") }), extensions: Extensions, headers: {"content-type": "application/octet-stream", "content-length": "87", "user-agent": "aws-sdk-rust/0.55.3 os/macos lang/rust/1.73.0", "x-amz-user-agent": "aws-sdk-rust/0.55.3 api/s3/0.28.0 os/macos lang/rust/1.73.0", "x-amz-date": "20231203T103035Z", "authorization": "AWS4-HMAC-SHA256 Credential=aws_access_key_id_dummy/20231203/us-west-dummy/s3/aws4_request, SignedHeaders=content-length;content-type;host;x-amz-content-sha256;x-amz-date;x-amz-user-agent, Signature=f15a435fdedbe3a1406eb14cc3809404146a11628cc5636bc4ae3a4e9f8f8c3d", "x-amz-content-sha256": "UNSIGNED-PAYLOAD", "host": "localhost:8014"}, uri: /skystore-us-west-1/my-key?x-id=PutObject }
+
+INFO:     127.0.0.1:64624 - "PATCH /complete_upload HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64624 - "POST /list_objects HTTP/1.1" 200 OK
+chosen locator:  <DBPhysicalObjectLocator id=1, location_tag='aws:us-west-1', cloud='aws', region='us-west-1', bucket='skystore-us-west-1', key='my-key', lock_acquired_ts=None, status=<Status.ready: 'ready'>, is_primary=True, multipart_upload_id=None, logical_object_id=1>
+INFO:     127.0.0.1:64624 - "POST /locate_object HTTP/1.1" 200 OK
+----body----: [7, 0, 0, 0, 0, 0, 0, 0, 228, 32, 20, 119, 215, 162, 135, 64, 0, 0, 0, 0, 0, 0, 0, 29, 63, 243, 27, 13, 31, 211, 230, 139, 164, 6, 62, 143, 39, 14, 151, 254, 123, 32, 83, 99, 109, 112, 103, 250, 32, 164, 204, 227, 109, 95, 163, 56, 115, 204, 132, 98, 86, 59, 45, 125, 102, 229, 187, 23, 238, 209, 172, 224, 183, 222, 243, 84, 126, 246, 91, 157, 193, 116, 150, 234, 66, 123, 247]
+test skyproxy_test::tests::test_put_then_get ... FAILED
+
+failures:
+
+failures:
+    skyproxy_test::tests::test_put_then_get
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 1 filtered out; finished in 6.57s
+

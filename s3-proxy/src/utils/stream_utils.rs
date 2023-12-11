@@ -91,10 +91,10 @@ pub fn split_streaming_blob(incoming: StreamingBlob, num_splits: usize) -> Vec<S
 }
 
 pub fn convert_u8_to_bytes(u8v: Vec<u8>) -> StreamingBlob {
-    let onebyte = Bytes::from(u8v);
+    let onebyte = Bytes::from(u8v.clone());
     let bytes = vec![onebyte];
     let stream = futures::stream::iter(bytes);
-    let wstream = WrapToResultStream::new(stream, RemainingLength::unknown());
+    let wstream = WrapToResultStream::new(stream, RemainingLength::new_exact(u8v.capacity()));
     let ciphertext = StreamingBlob::new(wstream);
     return ciphertext;
 }
