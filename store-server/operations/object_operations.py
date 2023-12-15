@@ -59,7 +59,7 @@ policy_ultra_dict = None
 try:
     policy_ultra_dict = ud.UltraDict(name="policy_ultra_dict", create=True)
 except Exception as e:
-    time.sleep(5)
+    time.sleep(3)
     policy_ultra_dict = ud.UltraDict(name="policy_ultra_dict", create=False)
 
 policy_ultra_dict["get_policy"] = ""
@@ -835,9 +835,9 @@ async def start_upload(
 
         # but we can choose wheatever idx in the primary_write_region list
         primary_write_region = primary_write_region[0]
-        assert (
-            primary_write_region != request.client_from_region
-        ), "should not be the same region"
+        # assert (
+        #     primary_write_region != request.client_from_region
+        # ), "should not be the same region"
     # NOTE: Push-based: upload to primary region and broadcast to other regions marked with need_warmup
     elif put_policy.name() == "push" or put_policy.name() == "replicate_all":
         # Except this case, always set the first-write region of the OBJECT to be primary
