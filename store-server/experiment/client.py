@@ -157,7 +157,7 @@ def create_instance(
             "client_from_region": server.region_tag,
             "skystore_bucket_prefix": "skystore",
             "put_policy": "replicate_all",
-            "get_policy": "cheapest",
+            "get_policy": "closest",
         }
         config_file_path = f"/tmp/init_config_{server.region_tag}.json"
         check_stderr(
