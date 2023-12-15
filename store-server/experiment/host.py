@@ -201,7 +201,7 @@ def create_instance(
             sudo -u postgres psql -c \"ALTER USER postgres PASSWORD 'skystore'\"; \
             export INIT_REGIONS={','.join(init_regions_list)}; \
             export SKYSTORE_BUCKET_PREFIX={skystore_bucket_prefix}; \
-            nohup python3.9 -m uvicorn app:app --host 0.0.0.0 --port 3000 > control_plane_output 2>&1 &"
+            nohup python3.9 -m uvicorn app:app --host 0.0.0.0 --port 3000 --workers 4 > control_plane_output 2>&1 &"
         )
 
     do_parallel(setup, instance_list, spinner=True, n=-1, desc="Setup")
