@@ -57,37 +57,23 @@ def create_instance(
         assert tup[1].strip() == "", f"Command failed, err: {tup[1]}"
 
     # validate arguments
-    aws_region_list = ["us-west-1"]
+    aws_region_list = ["us-west-2"]
     init_regions_list = ['aws:eu-south-2', 
-                         'aws:eu-west-2', 
-                         'aws:ap-southeast-2', 
-                         'aws:eu-north-1', 
-                         'aws:us-east-2', 
+                         'aws:eu-west-1', 
+                         'aws:ca-central-1', 
                          'aws:eu-west-3', 
-                         'aws:us-east-2', 
-                         'aws:us-west-1', 
-                         'aws:sa-east-1', 
-                         'aws:us-west-2', 
-                         'aws:us-west-1', 
+                         'aws:ap-southeast-2', 
                          'aws:eu-south-1', 
-                         'aws:ap-southeast-1', 
-                         'aws:sa-east-1', 
-                         'aws:us-east-2', 
-                         'aws:eu-central-2', 
-                         'aws:ap-south-1', 
-                         'aws:eu-north-1', 
-                         'aws:ap-southeast-3', 
                          'aws:eu-central-1', 
-                         'aws:us-west-2', 
-                         'aws:ap-east-1', 
+                         'aws:ap-southeast-1', 
+                         'aws:ap-northeast-1', 
+                         'aws:eu-central-2', 
+                         'aws:ap-northeast-3', 
                          'aws:ap-southeast-3', 
+                         'aws:sa-east-1', 
+                         'aws:us-west-1', 
                          'aws:ap-east-1', 
-                         'aws:us-east-2', 
-                         'aws:us-east-2', 
-                         'aws:eu-south-2', 
-                         'aws:us-west-2', 
-                         'aws:ap-east-1', 
-                         'aws:ap-southeast-2']
+                         'aws:ap-northeast-2']
     skystore_bucket_prefix = "skystore"
 
     # validate AWS regions
