@@ -2,6 +2,7 @@ use crate::objstore_client::ObjectStoreClient;
 use crate::utils::stream_utils::split_streaming_blob;
 use crate::utils::type_utils::*;
 
+use aws_config::imds::client;
 use bytes::BytesMut;
 use chrono::Utc;
 use core::panic;
@@ -17,6 +18,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::SystemTime;
 use tracing::error;
+use std::time::Instant;
 
 pub struct SkyProxy {
     pub store_clients: HashMap<String, Arc<Box<dyn ObjectStoreClient>>>,
@@ -718,6 +720,9 @@ impl S3 for SkyProxy {
         &self,
         req: S3Request<GetObjectInput>,
     ) -> S3Result<S3Response<GetObjectOutput>> {
+
+        let start_time = Instant::now();
+
         let bucket = req.input.bucket.clone();
         let key = req.input.key.clone();
         let vid = req
@@ -727,6 +732,8 @@ impl S3 for SkyProxy {
             .map(|id| id.parse::<i32>().unwrap());
 
         let locator = self.locate_object(bucket.clone(), key.clone(), vid).await?;
+        let client_from_region_clone = self.client_from_region.clone();
+        let key_clone = key.clone();
 
         match locator {
             Some(location) => {
@@ -746,11 +753,12 @@ impl S3 for SkyProxy {
                         let data = get_resp.output.body.unwrap();
 
                         let dir_conf_clone = self.dir_conf.clone();
-                        let client_from_region_clone = self.client_from_region.clone();
+                        
                         let store_clients_clone = self.store_clients.clone();
 
                         let (mut input_blobs, _) = split_streaming_blob(data, 2); // locators.len() + 1
                         let response_blob = input_blobs.pop();
+                        let client_from_region_clone_0 = self.client_from_region.clone();
 
                         // Spawn a background task to store the object in the local object store
                         tokio::spawn(async move {
@@ -759,7 +767,7 @@ impl S3 for SkyProxy {
                                 models::StartUploadRequest {
                                     bucket: bucket.clone(),
                                     key: key.clone(),
-                                    client_from_region: client_from_region_clone,
+                                    client_from_region: client_from_region_clone_0,
                                     version_id: vid, // logical version
                                     is_multipart: false,
                                     copy_src_bucket: None,
@@ -827,9 +835,9 @@ impl S3 for SkyProxy {
                                     // let metrics = OpMetrics {
                                     //     timestamp: timestamp_to_string(timestamp),
                                     //     latency: put_latency,
-                                    //     request_region: client_from_region,
+                                    //     request_region: client_from_region_clone.clone(),
                                     //     destination_region: locator.tag.clone(),
-                                    //     key: key,
+                                    //     key: key_clone.clone(),
                                     //     size: head_resp.output.content_length as u64,
                                     //     op: "PUT".to_string(),
                                     // };
@@ -858,29 +866,29 @@ impl S3 for SkyProxy {
                             ..Default::default()
                         });
 
-                        // let get_latency = start_time.elapsed().as_secs_f32();
-                        // let system_time: SystemTime = Utc::now().into();
-                        // let timestamp: s3s::dto::Timestamp = system_time.into();
+                        let get_latency = start_time.elapsed().as_secs_f32();
+                        let system_time: SystemTime = Utc::now().into();
+                        let timestamp: s3s::dto::Timestamp = system_time.into();
 
-                        // // build the metrics struct
-                        // let metrics = OpMetrics {
-                        //     timestamp: timestamp_to_string(timestamp),
-                        //     latency: get_latency,
-                        //     request_region: client_from_region,
-                        //     destination_region: location.tag.clone(),
-                        //     key: key_clone,
-                        //     size: get_resp.output.content_length as u64,
-                        //     op: "GET".to_string(),
-                        // };
+                        // build the metrics struct
+                        let metrics = OpMetrics {
+                            timestamp: timestamp_to_string(timestamp),
+                            latency: get_latency,
+                            request_region: client_from_region_clone,
+                            destination_region: location.tag.clone(),
+                            key: key_clone,
+                            size: get_resp.output.content_length as u64,
+                            op: "GET".to_string(),
+                        };
 
-                        // // Serialize the instance to a JSON string.
-                        // let serialized_metrics = serde_json::to_string(&metrics).unwrap();
+                        // Serialize the instance to a JSON string.
+                        let serialized_metrics = serde_json::to_string(&metrics).unwrap();
 
-                        // let res = write_metrics_to_file(serialized_metrics, "metrics.json");
+                        let res = write_metrics_to_file(serialized_metrics, "metrics.json");
 
-                        // if let Err(e) = res {
-                        //     panic!("Error writing metrics to file: {}", e);
-                        // }
+                        if let Err(e) = res {
+                            panic!("Error writing metrics to file: {}", e);
+                        }
 
                         return Ok(response);
                     } else {
@@ -910,29 +918,29 @@ impl S3 for SkyProxy {
                         res.output.body = new_body;
                         res.output.version_id = vid.map(|id| id.to_string()); // logical version
 
-                        // let get_latency = start_time.elapsed().as_secs_f32();
-                        // let system_time: SystemTime = Utc::now().into();
-                        // let timestamp: s3s::dto::Timestamp = system_time.into();
+                        let get_latency = start_time.elapsed().as_secs_f32();
+                        let system_time: SystemTime = Utc::now().into();
+                        let timestamp: s3s::dto::Timestamp = system_time.into();
 
-                        // // build the metrics struct
-                        // let metrics = OpMetrics {
-                        //     timestamp: timestamp_to_string(timestamp),
-                        //     latency: get_latency,
-                        //     request_region: client_from_region,
-                        //     destination_region: location.tag.clone(),
-                        //     key: key_clone,
-                        //     size: res.output.content_length as u64,
-                        //     op: "GET".to_string(),
-                        // };
+                        // build the metrics struct
+                        let metrics = OpMetrics {
+                            timestamp: timestamp_to_string(timestamp),
+                            latency: get_latency,
+                            request_region: client_from_region_clone,
+                            destination_region: location.tag.clone(),
+                            key: key_clone,
+                            size: res.output.content_length as u64,
+                            op: "GET".to_string(),
+                        };
 
-                        // // Serialize the instance to a JSON string.
-                        // let serialized_metrics = serde_json::to_string(&metrics).unwrap();
+                        // Serialize the instance to a JSON string.
+                        let serialized_metrics = serde_json::to_string(&metrics).unwrap();
 
-                        // let write_res = write_metrics_to_file(serialized_metrics, "metrics.json");
+                        let write_res = write_metrics_to_file(serialized_metrics, "metrics.json");
 
-                        // if let Err(e) = write_res {
-                        //     panic!("Error writing metrics to file: {}", e);
-                        // }
+                        if let Err(e) = write_res {
+                            panic!("Error writing metrics to file: {}", e);
+                        }
 
                         return Ok(res);
                     }
@@ -963,29 +971,29 @@ impl S3 for SkyProxy {
                     res.output.body = new_body;
                     res.output.version_id = vid.map(|id| id.to_string()); // logical version
 
-                    // let get_latency = start_time.elapsed().as_secs_f32();
-                    // let system_time: SystemTime = Utc::now().into();
-                    // let timestamp: s3s::dto::Timestamp = system_time.into();
+                    let get_latency = start_time.elapsed().as_secs_f32();
+                    let system_time: SystemTime = Utc::now().into();
+                    let timestamp: s3s::dto::Timestamp = system_time.into();
 
-                    // // build the metrics struct
-                    // let metrics = OpMetrics {
-                    //     timestamp: timestamp_to_string(timestamp),
-                    //     latency: get_latency,
-                    //     request_region: client_from_region,
-                    //     destination_region: location.tag.clone(),
-                    //     key: key_clone,
-                    //     size: res.output.content_length as u64,
-                    //     op: "GET".to_string(),
-                    // };
+                    // build the metrics struct
+                    let metrics = OpMetrics {
+                        timestamp: timestamp_to_string(timestamp),
+                        latency: get_latency,
+                        request_region: client_from_region_clone,
+                        destination_region: location.tag.clone(),
+                        key: key_clone,
+                        size: res.output.content_length as u64,
+                        op: "GET".to_string(),
+                    };
 
-                    // // Serialize the instance to a JSON string.
-                    // let serialized_metrics = serde_json::to_string(&metrics).unwrap();
+                    // Serialize the instance to a JSON string.
+                    let serialized_metrics = serde_json::to_string(&metrics).unwrap();
 
-                    // let write_res = write_metrics_to_file(serialized_metrics, "metrics.json");
+                    let write_res = write_metrics_to_file(serialized_metrics, "metrics.json");
 
-                    // if let Err(e) = write_res {
-                    //     panic!("Error writing metrics to file: {}", e);
-                    // }
+                    if let Err(e) = write_res {
+                        panic!("Error writing metrics to file: {}", e);
+                    }
 
                     return Ok(res);
                 }
@@ -1004,7 +1012,7 @@ impl S3 for SkyProxy {
     ) -> S3Result<S3Response<PutObjectOutput>> {
         // Idempotent PUT
 
-        // let start_time = Instant::now();
+        let start_time = Instant::now();
 
         if self.version_enable == *"NULL" {
             let locator = self
@@ -1065,8 +1073,8 @@ impl S3 for SkyProxy {
                     size
                 };
 
-                // let client_from_region = self.client_from_region.clone();
-                // let key = req.input.key.clone();
+                let client_from_region = self.client_from_region.clone();
+                let key = req.input.key.clone();
 
                 tasks.spawn(async move {
                     let put_resp = client.put_object(req).await.unwrap();
@@ -1086,29 +1094,29 @@ impl S3 for SkyProxy {
                     .await
                     .unwrap();
 
-                    // let put_latency = start_time.elapsed().as_secs_f32();
-                    // let system_time: SystemTime = Utc::now().into();
-                    // let timestamp: s3s::dto::Timestamp = system_time.into();
+                    let put_latency = start_time.elapsed().as_secs_f32();
+                    let system_time: SystemTime = Utc::now().into();
+                    let timestamp: s3s::dto::Timestamp = system_time.into();
 
-                    // // build the metrics struct
-                    // let metrics = OpMetrics {
-                    //     timestamp: timestamp_to_string(timestamp),
-                    //     latency: put_latency,
-                    //     request_region: client_from_region,
-                    //     destination_region: locator.tag.clone(),
-                    //     key,
-                    //     size: size_to_get as u64,
-                    //     op: "PUT".to_string(),
-                    // };
+                    // build the metrics struct
+                    let metrics = OpMetrics {
+                        timestamp: timestamp_to_string(timestamp),
+                        latency: put_latency,
+                        request_region: client_from_region,
+                        destination_region: locator.tag.clone(),
+                        key,
+                        size: size_to_get as u64,
+                        op: "PUT".to_string(),
+                    };
 
-                    // // Serialize the instance to a JSON string.
-                    // let serialized_metrics = serde_json::to_string(&metrics).unwrap();
+                    // Serialize the instance to a JSON string.
+                    let serialized_metrics = serde_json::to_string(&metrics).unwrap();
 
-                    // let res = write_metrics_to_file(serialized_metrics, "metrics.json");
+                    let res = write_metrics_to_file(serialized_metrics, "metrics.json");
 
-                    // if let Err(e) = res {
-                    //     panic!("Error writing metrics to file: {}", e);
-                    // }
+                    if let Err(e) = res {
+                        panic!("Error writing metrics to file: {}", e);
+                    }
 
                     e_tag
                 });

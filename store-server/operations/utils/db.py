@@ -108,7 +108,7 @@ db_init_log = None
 try:
     db_init_log = UltraDict(name="db_init_log", create=True)
 except Exception as e:
-    time.sleep(5)
+    time.sleep(2)
     db_init_log = UltraDict(name="db_init_log", create=False)
 
 with db_init_log.lock_pid_remote:
