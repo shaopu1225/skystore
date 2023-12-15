@@ -156,7 +156,7 @@ def create_instance(
             + [f"ibmcloud:{region}" for region in ibmcloud_region_list],
             "client_from_region": server.region_tag,
             "skystore_bucket_prefix": "skystore",
-            "put_policy": "write_local",
+            "put_policy": "single_region",
             "get_policy": "closest",
         }
         config_file_path = f"/tmp/init_config_{server.region_tag}.json"
