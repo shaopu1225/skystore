@@ -36,7 +36,7 @@ def create_instance(
     enable_gcp=False,
     enable_gcp_standard=False,
     enable_ibmcloud=False,
-    aws_instance_class="m5.8xlarge",
+    aws_instance_class="t2.2xlarge",
     azure_instance_class="Standard_D32_v5",
     gcp_instance_class="n2-standard-32",
     ibmcloud_instance_class="bx2-2x8",
@@ -156,7 +156,7 @@ def create_instance(
             + [f"ibmcloud:{region}" for region in ibmcloud_region_list],
             "client_from_region": server.region_tag,
             "skystore_bucket_prefix": "skystore",
-            "put_policy": "replicate_all",
+            "put_policy": "write_local",
             "get_policy": "closest",
         }
         config_file_path = f"/tmp/init_config_{server.region_tag}.json"
