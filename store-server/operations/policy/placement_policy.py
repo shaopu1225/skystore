@@ -85,7 +85,7 @@ class PushonWrite(PlacementPolicy):
         """
 
         # hard coded for now; make this a variable init in def __init__
-        push_regions = ["aws:us-west-1", "aws:us-east-1"]
+        push_regions = ["aws:us-west-2", "aws:us-east-1", "aws:us-west-1"]
         # assert all push regions in init regions
         assert all(r in self.init_regions for r in push_regions)
 
