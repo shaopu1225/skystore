@@ -23,6 +23,12 @@
                 "bucket": "skystore-eu-west-3"
             },
             {
+                "name": "aws:eu-north-1",
+                "cloud": "aws",
+                "region": "eu-north-1",
+                "bucket": "skystore-eu-north-1"
+            },
+            {
                 "name": "aws:us-west-1",
                 "cloud": "aws",
                 "region": "us-west-1",
@@ -82,11 +88,24 @@
                 "bucket": "skystore-ap-southeast-2"
             },
             {
+                "name": "aws:ap-south-1",
+                "cloud": "aws",
+                "region": "ap-south-1",
+                "bucket": "skystore-ap-south-1"
+            },
+            {
                 "name": "aws:eu-south-1",
                 "cloud": "aws",
                 "region": "eu-south-1",
                 "bucket": "skystore-eu-south-1"
             },
+            {
+                "name": "aws:me-central-1",
+                "cloud": "aws",
+                "region": "me-central-1",
+                "bucket": "skystore-me-central-1"
+            },
+
             {
                 "name": "aws:eu-central-1",
                 "cloud": "aws",
