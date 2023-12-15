@@ -156,7 +156,7 @@ def register(
         server_addr = "localhost"
     else:
         # NOTE: ip address set to be the remote store-server addr
-        server_addr = "13.40.36.65"
+        server_addr = "3.8.91.4"
 
     try:
         with open(register_config, "r") as f:

@@ -192,7 +192,7 @@ impl SkyProxy {
                 "http://127.0.0.1:3000".to_string()
             } else {
                 // NOTE: ip address set to be the remote store-server addr
-                "http://13.40.36.65:3000".to_string()
+                "http://3.8.91.4:3000".to_string()
             },
             ..Default::default()
         };
