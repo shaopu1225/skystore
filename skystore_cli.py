@@ -6,12 +6,13 @@ import os
 import time
 import requests
 from enum import Enum
+from UltraDict import UltraDict
 
 app = typer.Typer(name="skystore")
 env = os.environ.copy()
 
 DEFAULT_SKY_S3_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "target/debug/sky-s3"
+    os.path.dirname(os.path.abspath(__file__)), "target/release/sky-s3"
 )
 
 DEFAULT_STORE_SERVER_PATH = os.path.join(
@@ -19,11 +20,25 @@ DEFAULT_STORE_SERVER_PATH = os.path.join(
 )
 
 
-class Policy(str, Enum):
+class GetPolicy(str, Enum):
+    closest = "closest"
+    cheapest = "cheapest"
+    direct = "direct"
+
+
+class PutPolicy(str, Enum):
     copy_on_read = "copy_on_read"
-    read = "read"
+    # read = "read"
     write_local = "write_local"
     push = "push"
+    replicate_all = "replicate_all"
+    single_region = "single_region"
+
+
+class Version(str, Enum):
+    enable = "Enabled"
+    disable = "Suspended"
+    NULL = "NULL"
 
 
 @app.command()
@@ -40,8 +55,14 @@ def init(
     sky_s3_binary_path: str = typer.Option(
         DEFAULT_SKY_S3_PATH, "--sky-s3-path", help="Path to the sky-s3 binary"
     ),
-    policy: Policy = typer.Option(
-        Policy.write_local, "--policy", help="Policy to use for data placement"
+    get_policy: GetPolicy = typer.Option(
+        GetPolicy.cheapest, "--get_policy", help="Policy to use for data transfer"
+    ),
+    put_policy: PutPolicy = typer.Option(
+        PutPolicy.write_local, "--put_policy", help="Policy to use for data placement"
+    ),
+    enable_version: Version = typer.Option(
+        Version.enable, "--version", help="Whether to enable the version or not"
     ),
 ):
     with open(config_file, "r") as f:
@@ -63,8 +84,10 @@ def init(
         "AWS_SECRET_ACCESS_KEY": os.environ.get("AWS_SECRET_ACCESS_KEY"),
         "LOCAL": str(local_test).lower(),
         "LOCAL_SERVER": str(start_server).lower(),
-        "POLICY": policy,
+        "GET_POLICY": config["get_policy"] if "get_policy" in config else get_policy,
+        "PUT_POLICY": config["put_policy"] if "put_policy" in config else put_policy,
         "SKYSTORE_BUCKET_PREFIX": skystore_bucket_prefix,
+        "VERSION_ENABLE": enable_version,
     }
     env = {k: v for k, v in env.items() if v is not None}
 
@@ -85,14 +108,25 @@ def init(
 
     # Start the skystore server
     if start_server:
+        # clean up shared memory
+        try:
+            UltraDict.unlink_by_name("db_init_log")
+        except Exception as _:
+            print("db_init_log has been deleted.")
+        try:
+            UltraDict.unlink_by_name("policy_ultra_dict")
+        except Exception as _:
+            print("policy_ultra_dict has been deleted.")
         subprocess.Popen(
             f"cd {DEFAULT_STORE_SERVER_PATH}; "
-            "rm skystore.db; python3 -m uvicorn app:app --reload --port 3000",
+            "rm skystore.db; python3 -m uvicorn app:app --port 3000 --workers 32",
             shell=True,
             env=env,
         )
 
-    time.sleep(2)
+        # time.sleep(2)
+        # for postgres, need longer time to start
+        time.sleep(10)
 
     # Start the s3-proxy
     if os.path.exists(sky_s3_binary_path):
@@ -102,7 +136,7 @@ def init(
         )
     else:
         subprocess.Popen(
-            ["cargo", "run"],
+            ["cargo", "run", "--release"],
             env=env,
         )
     typer.secho(f"SkyStore initialized at: {'http://127.0.0.1:8002'}", fg="green")
@@ -122,7 +156,7 @@ def register(
         server_addr = "localhost"
     else:
         # NOTE: ip address set to be the remote store-server addr
-        server_addr = "54.183.123.82"
+        server_addr = "54.183.193.192"
 
     try:
         with open(register_config, "r") as f:
@@ -130,7 +164,11 @@ def register(
 
         resp = requests.post(
             f"http://{server_addr}:3000/register_buckets",
-            json={"bucket": config["bucket"], "config": config["config"]},
+            json={
+                "bucket": config["bucket"],
+                "config": config["config"],
+                "versioning": config["versioning"],
+            },
         )
         if resp.status_code == 200:
             typer.secho("Successfully registered.", fg="green")

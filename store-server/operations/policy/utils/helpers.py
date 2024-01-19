@@ -1,8 +1,10 @@
+import yaml
 import pandas as pd
 import networkx as nx
+from ..model.config import Config
 import os
 import ast
-from operations.policy.utils.definitions import (
+from ..utils.definitions import (
     aws_instance_throughput_limit,
     gcp_instance_throughput_limit,
     azure_instance_throughput_limit,
@@ -17,6 +19,12 @@ def refine_string(s):
 
 def convert_hyphen_to_colon(s):
     return s.replace(":", "-", 1)
+
+
+def load_config(config_path: str) -> Config:
+    with open(get_full_path(config_path), "r") as f:
+        config_data = yaml.safe_load(f)
+        return Config(**config_data)
 
 
 def get_full_path(relative_path: str):
@@ -134,6 +142,8 @@ def make_nx_graph(
             )
 
     # aws_nodes = [node for node in G.nodes if node.startswith("aws")]
+
     # just keep aws nodes and edges
     # G = G.subgraph(aws_nodes).copy()
+
     return G

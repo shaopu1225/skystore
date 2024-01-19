@@ -1,11 +1,39 @@
-from ..schemas.object_schemas import LocateObjectRequest, DBPhysicalObjectLocator
-from operations.policy.utils.helper import make_nx_graph
+from operations.schemas.object_schemas import (
+    LocateObjectRequest,
+    DBPhysicalObjectLocator,
+)
+from operations.policy.utils.helpers import make_nx_graph
 from typing import List
+
+
+class DataTransferGraph:
+    """
+    A singleton class representing the graph used for data transfer calculations.
+    This ensures that only one instance of the graph is created and used throughout the application.
+    """
+
+    _instance = None
+
+    @classmethod
+    def get_instance(cls):
+        """
+        Returns the singleton instance of the graph. If it does not exist, it creates one.
+        """
+        if cls._instance is None:
+            cls._instance = cls._create_graph()
+        return cls._instance
+
+    @staticmethod
+    def _create_graph():
+        """
+        Creates the network graph. This method is internal to the class.
+        """
+        return make_nx_graph()
 
 
 class TransferPolicy:
     def __init__(self) -> None:
-        self.stat_graph = make_nx_graph()
+        self.stat_graph = DataTransferGraph.get_instance()
         pass
 
     def get(
@@ -14,13 +42,10 @@ class TransferPolicy:
         pass
 
     def name(self) -> str:
-        pass
+        return ""
 
 
 class CheapestTransfer(TransferPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def get(
         self, req: LocateObjectRequest, physical_locators: List[DBPhysicalObjectLocator]
     ) -> DBPhysicalObjectLocator:
@@ -51,9 +76,6 @@ class CheapestTransfer(TransferPolicy):
 
 
 class ClosestTransfer(TransferPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
     def get(
         self, req: LocateObjectRequest, physical_locators: List[DBPhysicalObjectLocator]
     ) -> DBPhysicalObjectLocator:
@@ -83,11 +105,7 @@ class ClosestTransfer(TransferPolicy):
         return "closest"
 
 
-class SingleRegionTransfer(TransferPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-        self.base_region = "aws:us-west-1"
-
+class DirectTransfer(TransferPolicy):
     def get(
         self, req: LocateObjectRequest, physical_locators: List[DBPhysicalObjectLocator]
     ) -> DBPhysicalObjectLocator:
@@ -98,21 +116,20 @@ class SingleRegionTransfer(TransferPolicy):
         Returns:
             DBPhysicalObjectLocator: the single matched region to fetch from
         """
-        assert self.base_region in [
-            locator.location_tag for locator in physical_locators
-        ]
+
+        config_region = ["aws:us-west-1"]
+
         locator = next(
             (
                 locator
                 for locator in physical_locators
-                if self.base_region == locator.location_tag
+                if config_region == locator.location_tag
             ),
             None,
         )
         if locator:
             return locator
-        else:
-            raise Exception(f"Object not found in the base region {self.base_region}")
+        pass
 
     def name(self) -> str:
         return "direct"
@@ -123,7 +140,7 @@ def get_transfer_policy(name: str) -> TransferPolicy:
         return CheapestTransfer()
     elif name == "closest":
         return ClosestTransfer()
-    elif name == "single":
-        return SingleRegionTransfer()
+    elif name == "direct":
+        return DirectTransfer()
     else:
         raise Exception("Unknown transfer policy name")

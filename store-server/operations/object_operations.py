@@ -27,6 +27,8 @@ from operations.schemas.object_schemas import (
     ListPartsRequest,
     LogicalPartResponse,
     MultipartResponse,
+    SetPolicyRequest,
+
 )
 from operations.schemas.bucket_schemas import DBLogicalBucket
 from sqlalchemy.orm import selectinload, joinedload, Session
@@ -37,8 +39,46 @@ from fastapi import APIRouter, Response, Depends, status
 from operations.utils.db import get_session, logger
 from typing import List
 from datetime import datetime
+from operations.policy.placement_policy import get_placement_policy
+from operations.policy.transfer_policy import get_transfer_policy
+from operations.bucket_operations import init_region_tags
+import UltraDict as ud
+import time
 
 router = APIRouter()
+
+# initialize a ultradict to store the policy name in shared memory
+# so that can be used by multiple workers started by uvicorn
+
+policy_ultra_dict = None
+try:
+    policy_ultra_dict = ud.UltraDict(name="policy_ultra_dict", create=True)
+except Exception as _:
+    time.sleep(3)
+    policy_ultra_dict = ud.UltraDict(name="policy_ultra_dict", create=False)
+
+policy_ultra_dict["get_policy"] = ""
+policy_ultra_dict["put_policy"] = ""
+
+
+@router.post("/update_policy")
+async def update_policy(
+    request: SetPolicyRequest, db: Session = Depends(get_session)
+) -> None:
+    put_policy_type = request.put_policy
+    get_policy_type = request.get_policy
+
+    old_put_policy_type = policy_ultra_dict["put_policy"]
+    old_get_policy_type = policy_ultra_dict["get_policy"]
+
+    if put_policy_type is None and get_policy_type is None:
+        raise ValueError("Invalid policy type")
+
+    if put_policy_type is not None and put_policy_type != old_put_policy_type:
+        policy_ultra_dict["put_policy"] = put_policy_type
+
+    if get_policy_type is not None and get_policy_type != old_get_policy_type:
+        policy_ultra_dict["get_policy"] = get_policy_type
 
 
 @router.post("/start_delete_objects")
@@ -193,6 +233,10 @@ async def locate_object(
     request: LocateObjectRequest, db: Session = Depends(get_session)
 ) -> LocateObjectResponse:
     """Given the logical object information, return one or zero physical object locators."""
+    
+    get_policy = get_transfer_policy(policy_ultra_dict["get_policy"])
+
+    
     stmt = (
         select(DBPhysicalObjectLocator)
         .join(DBLogicalObject)
@@ -206,29 +250,13 @@ async def locate_object(
     if len(locators) == 0:
         return Response(status_code=404, content="Object Not Found")
 
-    chosen_locator = None
-    reason = ""
+    await db.refresh(locators, ["physical_object_locators"])
 
-    # if request.get_primary:
-    #     chosen_locator = next(locator for locator in locators if locator.is_primary)
-    #     reason = "exact match (primary)"
-    # else:
-    for locator in locators:
-        if locator.location_tag == request.client_from_region:
-            chosen_locator = locator
-            reason = "exact match"
-            break
-
-    if chosen_locator is None:
-        # find the primary locator
-        chosen_locator = next(locator for locator in locators if locator.is_primary)
-        reason = "fallback to primary"
+    chosen_locator = get_policy.get(request, locators.physical_object_locators)
 
     logger.debug(
-        f"locate_object: chosen locator with strategy {reason} out of {len(locators)}, {request} -> {chosen_locator}"
+        f"locate_object: chosen locator out of {len(locators.physical_object_locators)}, {request} -> {chosen_locator}"
     )
-
-    await db.refresh(chosen_locator, ["logical_object"])
 
     return LocateObjectResponse(
         id=chosen_locator.id,
@@ -342,6 +370,9 @@ async def start_upload(
     request: StartUploadRequest, db: Session = Depends(get_session)
 ) -> StartUploadResponse:
     # TODO: policy check
+    
+    put_policy = get_placement_policy(policy_ultra_dict["put_policy"], init_region_tags)
+
 
     existing_objects_stmt = (
         select(DBPhysicalObjectLocator)
@@ -404,8 +435,10 @@ async def start_upload(
     physical_bucket_locators = logical_bucket.physical_bucket_locators
 
     primary_write_region = None
+    
+    upload_to_region_tags = put_policy.place(request)
 
-    if primary_exists:
+    if primary_exists and put_policy.name() == "copy_on_read":
         # Assume that physical bucket locators for this region already exists and we don't need to create them
         # For pull-on-read
         upload_to_region_tags = [request.client_from_region]
@@ -419,28 +452,23 @@ async def start_upload(
         assert (
             primary_write_region != request.client_from_region
         ), "should not be the same region"
+        
+    elif put_policy.name() == "push" or put_policy.name() == "replicate_all":
+        # Except this case, always set the first-write region of the OBJECT to be primary
+        primary_write_region = [
+            locator.location_tag
+            for locator in physical_bucket_locators
+            if locator.is_primary
+        ]
+        assert (
+            len(primary_write_region) == 1
+        ), "should only have one primary write region"
+        primary_write_region = primary_write_region[0]
+    elif put_policy.name() == "single_region":
+        primary_write_region = upload_to_region_tags[0]
     else:
-        # NOTE: Push-based: upload to primary region and broadcast to other regions marked with need_warmup
-        if request.policy == "push":
-            # Except this case, always set the first-write region of the OBJECT to be primary
-            upload_to_region_tags = [
-                locator.location_tag
-                for locator in physical_bucket_locators
-                if locator.is_primary or locator.need_warmup
-            ]
-            primary_write_region = [
-                locator.location_tag
-                for locator in physical_bucket_locators
-                if locator.is_primary
-            ]
-            assert (
-                len(primary_write_region) == 1
-            ), "should only have one primary write region"
-            primary_write_region = primary_write_region[0]
-        else:
-            # Set the first-write region of the OBJECT to be primary
-            upload_to_region_tags = [request.client_from_region]
-            primary_write_region = request.client_from_region
+        # Write to the local region and set the first-write region of the OBJECT to be primary
+        primary_write_region = request.client_from_region
 
     copy_src_buckets = []
     copy_src_keys = []
@@ -531,6 +559,8 @@ async def start_upload(
 async def complete_upload(
     request: PatchUploadIsCompleted, db: Session = Depends(get_session)
 ):
+    put_policy = get_placement_policy(policy_ultra_dict["put_policy"], init_region_tags)
+    
     stmt = (
         select(DBPhysicalObjectLocator)
         .join(DBLogicalObject)
@@ -547,9 +577,16 @@ async def complete_upload(
     physical_locator.status = Status.ready
     physical_locator.lock_acquired_ts = None
 
+    policy_name = put_policy.name()
     if (
-        request.policy == "push" and physical_locator.is_primary
-    ) or request.policy == "write_local":  # TODO: might need to change the if conditions for different policies
+        (
+            (policy_name == "push" or policy_name == "replicate_all")
+            and physical_locator.is_primary
+        )
+        or policy_name == "write_local"
+        or policy_name == "copy_on_read"
+        or policy_name == "single_region"
+    ):
         # await db.refresh(physical_locator, ["logical_object"])
         logical_object = physical_locator.logical_object
         logical_object.status = Status.ready

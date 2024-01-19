@@ -1,5 +1,6 @@
 from typing import List
 from operations.schemas.object_schemas import StartUploadRequest
+from operations.policy.transfer_policy import DataTransferGraph
 
 
 class PlacementPolicy:
@@ -10,7 +11,7 @@ class PlacementPolicy:
         pass
 
     def name(self) -> str:
-        pass
+        return ""
 
 
 class SingleRegionWrite(PlacementPolicy):
@@ -20,7 +21,7 @@ class SingleRegionWrite(PlacementPolicy):
 
     def __init__(self, init_regions: List[str]) -> None:
         super().__init__(init_regions)
-        self.single_store_region = "aws:us-west-1"
+        pass
 
     def place(self, req: StartUploadRequest) -> List[str]:
         """
@@ -29,8 +30,12 @@ class SingleRegionWrite(PlacementPolicy):
         Returns:
             List[str]: single region to write to
         """
-        assert self.single_store_region in self.init_regions
-        return [self.single_store_region]
+
+        # NOTE: hard coded for now; make this a variable init in def __init__
+        single_store_region = "aws:us-west-1"
+
+        assert single_store_region in self.init_regions
+        return [single_store_region]
 
     def name(self) -> str:
         return "single_region"
@@ -43,6 +48,8 @@ class ReplicateAll(PlacementPolicy):
 
     def __init__(self, init_regions: List[str]) -> None:
         super().__init__(init_regions)
+        self.stat_graph = DataTransferGraph.get_instance()
+        pass
 
     def place(self, req: StartUploadRequest) -> List[str]:
         """
@@ -64,7 +71,6 @@ class PushonWrite(PlacementPolicy):
 
     def __init__(self, init_regions: List[str]) -> None:
         super().__init__(init_regions)
-        self.push_regions = ["aws:us-west-1", "aws:us-east-1"]
 
     def place(
         self,
@@ -76,9 +82,13 @@ class PushonWrite(PlacementPolicy):
         Returns:
             List[str]: the regions to push to, including the primary region and the regions we want to push to
         """
-        # assert all push regions in init_regions
-        assert all(r in self.init_regions for r in self.push_regions)
-        return list(set([req.client_from_region] + self.push_regions))
+
+        # hard coded for now; make this a variable init in def __init__
+        push_regions = ["aws:us-west-1", "aws:us-east-1"]
+        # assert all push regions in init regions
+        assert all(r in self.init_regions for r in push_regions)
+
+        return list(set([req.client_from_region] + push_regions))
 
     def name(self) -> str:
         return "push"
@@ -96,6 +106,7 @@ class PullOnRead(PlacementPolicy):
         Returns:
             List[str]: the region client is from
         """
+
         return [req.client_from_region]
 
     def name(self) -> str:

@@ -20,8 +20,10 @@ pub struct SkyProxy {
     pub store_clients: HashMap<String, Arc<Box<dyn ObjectStoreClient>>>,
     pub dir_conf: Configuration,
     pub client_from_region: String,
-    pub policy: String,
+    pub get_policy: String,
+    pub put_policy: String,
     pub skystore_bucket_prefix: String,
+    pub version_enable: String,
 }
 
 impl SkyProxy {
@@ -30,8 +32,9 @@ impl SkyProxy {
         client_from_region: String,
         local: bool,
         local_server: bool,
-        policy: String,
+        policy: (String, String),
         skystore_bucket_prefix: String,
+        version_enable: String,
     ) -> Self {
         let mut store_clients = HashMap::new();
 
@@ -156,12 +159,25 @@ impl SkyProxy {
             .await
             .expect("directory service not healthy");
 
+        // set policy
+        apis::update_policy(
+            &dir_conf,
+            models::SetPolicyRequest {
+                get_policy: Some(policy.0.clone()),
+                put_policy: Some(policy.1.clone()),
+            },
+        )
+        .await
+        .expect("update policy failed");
+
         Self {
             store_clients,
             dir_conf,
             client_from_region,
-            policy,
+            get_policy: policy.0,
+            put_policy: policy.1,
             skystore_bucket_prefix,
+            version_enable,
         }
     }
 }
@@ -173,7 +189,9 @@ impl Clone for SkyProxy {
             dir_conf: self.dir_conf.clone(),
             client_from_region: self.client_from_region.clone(),
             skystore_bucket_prefix: self.skystore_bucket_prefix.clone(),
-            policy: self.policy.clone(),
+            get_policy: self.get_policy.clone(),
+            put_policy: self.put_policy.clone(),
+            version_enable: self.version_enable.clone(),
         }
     }
 }
@@ -188,8 +206,8 @@ impl std::fmt::Debug for SkyProxy {
             .field("store_clients", &client_keys)
             .field("dir_conf", &self.dir_conf)
             .field("client_from_region", &self.client_from_region)
-            .field("policy", &self.policy)
-            .finish()
+            .field("policy", &self.get_policy)
+            .field("policy", &self.put_policy)            .finish()
     }
 }
 
