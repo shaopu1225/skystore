@@ -50,7 +50,7 @@ async def main():
                     "size": metric["size"],
                     "op": metric["op"],
                 },
-                "54.215.122.16",
+                "54.177.136.133",
             )
         last_file_line = len(metrics)
 
